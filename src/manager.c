@@ -37,6 +37,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <limits.h>
+#include <dirent.h>
 
 #ifndef __MINGW32__
 #include <netdb.h>
@@ -140,10 +141,6 @@ static char *construct_command_line(struct manager_ctx *manager, struct server *
     if (manager->mode == UDP_ONLY) {
         int len = strlen(cmd);
         snprintf(cmd + len, BUF_SIZE - len, " -U");
-    }
-    if (manager->mode == TCP_AND_UDP) {
-        int len = strlen(cmd);
-        snprintf(cmd + len, BUF_SIZE - len, " -u");
     }
     if (manager->mode == TCP_AND_UDP) {
         int len = strlen(cmd);
@@ -297,6 +294,25 @@ static void add_server(struct manager_ctx *manager, struct server *server)
     }
 }
 
+static void kill_server(char *prefix, char *pid_file)
+{
+    char path[PATH_MAX];
+    int pid;
+    snprintf(path, PATH_MAX, "%s/%s", prefix, pid_file);
+    FILE *f = fopen(path, "r");
+    if (f == NULL) {
+        if (verbose) {
+            LOGE("unable to open pid file");
+        }
+        return;
+    }
+    if (fscanf(f, "%d", &pid) != EOF) {
+        kill(pid, SIGTERM);
+    }
+    fclose(f);
+    remove(path);
+}
+
 static void stop_server(char *prefix, char *port)
 {
     char path[PATH_MAX];
@@ -380,7 +396,7 @@ static void manager_recv_cb(EV_P_ ev_io *w, int revents)
         add_server(manager, server);
 
         char msg[3] = "ok";
-        if (sendto(manager->fd, msg, 3, 0, (struct sockaddr *)&claddr, len) != 3) {
+        if (sendto(manager->fd, msg, 2, 0, (struct sockaddr *)&claddr, len) != 2) {
             ERROR("add_sendto");
         }
     } else if (strcmp(action, "remove") == 0) {
@@ -398,7 +414,7 @@ static void manager_recv_cb(EV_P_ ev_io *w, int revents)
         ss_free(server);
 
         char msg[3] = "ok";
-        if (sendto(manager->fd, msg, 3, 0, (struct sockaddr *)&claddr, len) != 3) {
+        if (sendto(manager->fd, msg, 2, 0, (struct sockaddr *)&claddr, len) != 2) {
             ERROR("remove_sendto");
         }
     } else if (strcmp(action, "stat") == 0) {
@@ -427,8 +443,8 @@ static void manager_recv_cb(EV_P_ ev_io *w, int revents)
             size_t pos            = strlen(buf);
             if (pos > BUF_SIZE / 2) {
                 buf[pos - 1] = '}';
-                if (sendto(manager->fd, buf, pos + 1, 0, (struct sockaddr *)&claddr, len)
-                    != pos + 1) {
+                if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
+                    != pos) {
                     ERROR("ping_sendto");
                 }
                 memset(buf, 0, BUF_SIZE);
@@ -442,10 +458,11 @@ static void manager_recv_cb(EV_P_ ev_io *w, int revents)
             buf[pos - 1] = '}';
         } else {
             buf[pos] = '}';
+            pos++;
         }
 
-        if (sendto(manager->fd, buf, pos + 1, 0, (struct sockaddr *)&claddr, len)
-            != pos + 1) {
+        if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
+            != pos) {
             ERROR("ping_sendto");
         }
     }
@@ -454,7 +471,7 @@ static void manager_recv_cb(EV_P_ ev_io *w, int revents)
 
 ERROR_MSG:
     strcpy(buf, "err");
-    if (sendto(manager->fd, buf, 4, 0, (struct sockaddr *)&claddr, len) != 4) {
+    if (sendto(manager->fd, buf, 3, 0, (struct sockaddr *)&claddr, len) != 3) {
         ERROR("error_sendto");
     }
 }
@@ -773,6 +790,23 @@ int main(int argc, char **argv)
     if (err != 0 && errno != EEXIST) {
         ERROR("mkdir");
         FATAL("unable to create working directory");
+    }
+
+    // Clean up all existed processes
+    DIR *dp;
+    struct dirent *ep;
+    dp = opendir(working_dir);
+    if (dp != NULL) {
+        while ((ep = readdir(dp)) != NULL) {
+            size_t len = strlen(ep->d_name);
+            if (strcmp(ep->d_name + len - 3, "pid") == 0) {
+                kill_server(working_dir, ep->d_name);
+                if (verbose) LOGI("kill %s", ep->d_name);
+            }
+        }
+        closedir (dp);
+    } else {
+        FATAL("Couldn't open the directory");
     }
 
     server_table = cork_string_hash_table_new(MAX_PORT_NUM, 0);

@@ -276,12 +276,25 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
 
                 if (!fast_open || remote->direct) {
                     // connecting, wait until connected
-                    connect(remote->fd, (struct sockaddr *)&(remote->addr), remote->addr_len);
+                    int r = connect(remote->fd, (struct sockaddr *)&(remote->addr), remote->addr_len);
 
-                    // wait on remote connected event
-                    ev_io_stop(EV_A_ & server_recv_ctx->io);
-                    ev_io_start(EV_A_ & remote->send_ctx->io);
-                    ev_timer_start(EV_A_ & remote->send_ctx->watcher);
+                    if (r < 0 && errno != CONNECT_IN_PROGRESS) {
+                        ERROR("connect");
+                        close_and_free_remote(EV_A_ remote);
+                        close_and_free_server(EV_A_ server);
+                        return;
+                    }
+
+                    if (r == 0) {
+                        if (verbose) LOGI("connected immediately");
+                        remote_send_cb(EV_A_ & remote->send_ctx->io, 0);
+                    } else {
+                        // wait on remote connected event
+                        ev_io_stop(EV_A_ & server_recv_ctx->io);
+                        ev_io_start(EV_A_ & remote->send_ctx->io);
+                        ev_timer_start(EV_A_ & remote->send_ctx->watcher);
+                    }
+
                 } else {
 #ifdef TCP_FASTOPEN
 #ifdef __APPLE__
@@ -302,7 +315,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
                                    (struct sockaddr *)&(remote->addr), remote->addr_len);
 #endif
                     if (s == -1) {
-                        if (errno == EINPROGRESS) {
+                        if (errno == CONNECT_IN_PROGRESS) {
                             // in progress, wait until connected
                             remote->buf->idx = 0;
                             ev_io_stop(EV_A_ & server_recv_ctx->io);
@@ -405,7 +418,7 @@ static void server_recv_cb(EV_P_ ev_io *w, int revents)
                 close_and_free_server(EV_A_ server);
                 return;
             } else {
-                char host[256], port[16];
+                char host[257], port[16];
 
                 buffer_t ss_addr_to_send;
                 buffer_t *abuf = &ss_addr_to_send;
@@ -927,6 +940,9 @@ static void signal_cb(EV_P_ ev_signal *w, int revents)
         switch (w->signum) {
         case SIGINT:
         case SIGTERM:
+#ifndef __MINGW32__
+        case SIGUSR1:
+#endif
             ev_unloop(EV_A_ EVUNLOOP_ALL);
         }
     }
@@ -1315,6 +1331,11 @@ int start_ss_local_server(profile_t profile)
     ev_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
     ev_signal_start(EV_DEFAULT, &sigint_watcher);
     ev_signal_start(EV_DEFAULT, &sigterm_watcher);
+#ifndef __MINGW32__
+    struct ev_signal sigusr1_watcher;
+    ev_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
+    ev_signal_start(EV_DEFAULT, &sigusr1_watcher);
+#endif
 
     // Setup keys
     LOGI("initializing ciphers... %s", method);
@@ -1392,6 +1413,9 @@ int start_ss_local_server(profile_t profile)
 
     ev_signal_stop(EV_DEFAULT, &sigint_watcher);
     ev_signal_stop(EV_DEFAULT, &sigterm_watcher);
+#ifndef __MINGW32__
+    ev_signal_stop(EV_DEFAULT, &sigusr1_watcher);
+#endif
 
     // cannot reach here
     return 0;
