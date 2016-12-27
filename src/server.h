@@ -52,9 +52,13 @@ typedef struct server_ctx {
 typedef struct server {
     int fd;
     int stage;
-    buffer_t *buf;
-
     int auth;
+
+    obfs_t *obfs;
+
+    buffer_t *buf;
+    buffer_t *header_buf;
+
     struct chunk *chunk;
 
     struct enc_ctx *e_ctx;

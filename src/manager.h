@@ -44,11 +44,16 @@ struct manager_ctx {
     char *iface;
     char *acl;
     char *user;
+    char *obfs;
     char *manager_address;
     char **hosts;
     int host_num;
     char **nameservers;
     int nameserver_num;
+    int mtu;
+#ifdef HAVE_SETRLIMIT
+    int nofile;
+#endif
 };
 
 struct server {

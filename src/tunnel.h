@@ -37,6 +37,7 @@ typedef struct listen_ctx {
     int method;
     int timeout;
     int fd;
+    int mptcp;
     struct sockaddr **remote_addr;
 } listen_ctx_t;
 
@@ -48,6 +49,9 @@ typedef struct server_ctx {
 
 typedef struct server {
     int fd;
+
+    obfs_t *obfs;
+
     buffer_t *buf;
     struct enc_ctx *e_ctx;
     struct enc_ctx *d_ctx;

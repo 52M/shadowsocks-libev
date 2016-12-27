@@ -1,4 +1,4 @@
-VERSION_INFO = 1:0:0
+VERSION_INFO = 2:0:0
 
 AM_CFLAGS = -g -O2 -Wall -Werror -Wno-deprecated-declarations -fno-strict-aliasing -std=gnu99 -D_GNU_SOURCE
 AM_CFLAGS += $(PTHREAD_CFLAGS)
@@ -9,10 +9,11 @@ AM_CFLAGS += -I$(top_srcdir)/libsodium/src/libsodium/include
 endif
 AM_CFLAGS += -I$(top_srcdir)/libipset/include
 AM_CFLAGS += -I$(top_srcdir)/libcork/include
+AM_CFLAGS += $(LIBPCRE_CFLAGS)
 
 SS_COMMON_LIBS = $(top_builddir)/libipset/libipset.la \
                  $(top_builddir)/libcork/libcork.la \
-                 $(INET_NTOP_LIB)
+                 $(INET_NTOP_LIB) $(LIBPCRE_LIBS)
 if USE_SYSTEM_SHARED_LIB
 SS_COMMON_LIBS += -lev -lsodium -lm
 else
@@ -25,6 +26,14 @@ if !BUILD_WINCOMPAT
 bin_PROGRAMS += ss-server ss-manager
 endif
 
+sni_src = http.c \
+          tls.c \
+          rule.c
+
+obfs_src = obfs_http.c \
+		   obfs_tls.c \
+		   base64.c
+
 ss_local_SOURCES = utils.c \
                    jconf.c \
                    json.c \
@@ -33,7 +42,9 @@ ss_local_SOURCES = utils.c \
                    cache.c \
                    acl.c \
                    netutils.c \
-                   local.c
+                   local.c \
+				   $(obfs_src) \
+                   $(sni_src)
 
 ss_tunnel_SOURCES = utils.c \
                     jconf.c \
@@ -42,6 +53,7 @@ ss_tunnel_SOURCES = utils.c \
                     udprelay.c \
                     cache.c \
                     netutils.c \
+				    $(obfs_src) \
                     tunnel.c
 
 ss_server_SOURCES = utils.c \
@@ -53,7 +65,9 @@ ss_server_SOURCES = utils.c \
                     cache.c \
                     acl.c \
                     resolv.c \
-                    server.c
+                    server.c \
+				    $(obfs_src) \
+                    $(sni_src)
 
 ss_manager_SOURCES = utils.c \
                      jconf.c \
@@ -94,7 +108,10 @@ ss_redir_SOURCES = utils.c \
                    netutils.c \
                    cache.c \
                    udprelay.c \
-                   redir.c
+                   redir.c \
+				   $(obfs_src) \
+                   $(sni_src)
+
 ss_redir_CFLAGS = $(AM_CFLAGS) -DMODULE_REDIR
 ss_redir_LDADD = $(SS_COMMON_LIBS)
 if USE_SYSTEM_SHARED_LIB

@@ -20,9 +20,25 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#if defined(USE_CRYPTO_OPENSSL)
+
+#include <openssl/opensslv.h>
+#define USING_CRYPTO OPENSSL_VERSION_TEXT
+
+#elif defined(USE_CRYPTO_POLARSSL)
+#include <polarssl/version.h>
+#define USING_CRYPTO POLARSSL_VERSION_STRING_FULL
+
+#elif defined(USE_CRYPTO_MBEDTLS)
+#include <mbedtls/version.h>
+#define USING_CRYPTO MBEDTLS_VERSION_STRING_FULL
+
+#endif
+
 #ifndef _UTILS_H
 #define _UTILS_H
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
@@ -194,6 +210,7 @@ void ERROR(const char *s);
 #endif
 
 char *ss_itoa(int i);
+int ss_isnumeric(const char *s);
 int run_as(const char *user);
 void FATAL(const char *msg);
 void usage(void);
@@ -210,6 +227,29 @@ void *ss_realloc(void *ptr, size_t new_size);
     do {                 \
         free(ptr);       \
         ptr = NULL;      \
-    } while(0)
+    } while (0)
+
+#if BYTE_ORDER == BIG_ENDIAN
+
+#define CT_HTONS(n) (n)
+#define CT_NTOHS(n) (n)
+#define CT_HTONL(n) (n)
+#define CT_NTOHL(n) (n)
+
+#else
+
+#define CT_HTONS(n) (((((unsigned short)(n) & 0xFF)) << 8) | (((unsigned short)(n) & 0xFF00) >> 8))
+#define CT_NTOHS(n) (((((unsigned short)(n) & 0xFF)) << 8) | (((unsigned short)(n) & 0xFF00) >> 8))
+
+#define CT_HTONL(n) (((((unsigned long)(n) & 0xFF)) << 24) | \
+                          ((((unsigned long)(n) & 0xFF00)) << 8) | \
+                          ((((unsigned long)(n) & 0xFF0000)) >> 8) | \
+                          ((((unsigned long)(n) & 0xFF000000)) >> 24))
+
+#define CT_NTOHL(n) (((((unsigned long)(n) & 0xFF)) << 24) | \
+                          ((((unsigned long)(n) & 0xFF00)) << 8) | \
+                          ((((unsigned long)(n) & 0xFF0000)) >> 8) | \
+                          ((((unsigned long)(n) & 0xFF000000)) >> 24))
+#endif
 
 #endif // _UTILS_H

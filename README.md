@@ -9,7 +9,7 @@ It is a port of [Shadowsocks](https://github.com/shadowsocks/shadowsocks)
 created by [@clowwindy](https://github.com/clowwindy), which is maintained by
 [@madeye](https://github.com/madeye) and [@linusyang](https://github.com/linusyang).
 
-Current version: 2.4.7 | [Changelog](debian/changelog)
+Current version: 2.6.0 | [Changelog](debian/changelog)
 
 Travis CI: [![Travis CI](https://travis-ci.org/shadowsocks/shadowsocks-libev.svg?branch=master)](https://travis-ci.org/shadowsocks/shadowsocks-libev)
 
@@ -89,37 +89,28 @@ in the system during compilation and linking.
 
 #### Install from repository
 
-**Note: The repository doesn't always contain the latest version. Please build from source if you want the latest version (see below)**
+**Note: The repositories doesn't always contain the latest version. Please build from source if you want the latest version (see below)**
 
-Add GPG public key:
+Shadowsocks-libev is available in the official repository for Debian 9("Stretch"), unstable, Ubuntu 16.10 and later derivatives:
 
 ```bash
-wget -O- http://shadowsocks.org/debian/1D27208A.gpg | sudo apt-key add -
+sudo apt update
+sudo apt install shadowsocks-libev
 ```
 
-Add either of the following lines to your /etc/apt/sources.list:
+For Debian Jessie users, please install it from `jessie-backports`:
 
-```
-# Ubuntu 14.04 or above
-deb http://shadowsocks.org/ubuntu trusty main
-
-# Debian Wheezy, Ubuntu 12.04 or any distribution with libssl > 1.0.1
-deb http://shadowsocks.org/debian wheezy main
-
-```
-
-Then:
-
-``` bash
-sudo apt-get update
-sudo apt-get install shadowsocks-libev
+```bash
+sudo sh -c 'printf "deb http://ftp.debian.org/debian jessie-backports main" > /etc/apt/sources.list.d/jessie-backports.list'
+sudo apt update
+sudo apt -t jessie-backports install shadowsocks-libev
 ```
 
 #### Build deb package from source
 
 Supported Platforms:
 
-* Debian 7 (see below), 8, unstable
+* Debian 7 (see below), 8, 9, unstable
 * Ubuntu 14.04 (see below), Ubuntu 14.10, 15.04, 15.10 or higher
 
 **Note for Ubuntu 14.04 users**:
@@ -140,8 +131,8 @@ section below.
 
 ``` bash
 cd shadowsocks-libev
-sudo apt-get install build-essential autoconf libtool libssl-dev \
-    gawk debhelper dh-systemd init-system-helpers pkg-config
+sudo apt-get install --no-install-recommends build-essential autoconf libtool libssl-dev \
+    gawk debhelper dh-systemd init-system-helpers pkg-config asciidoc xmlto apg libpcre3-dev
 dpkg-buildpackage -b -us -uc -i
 cd ..
 sudo dpkg -i shadowsocks-libev*.deb
@@ -164,7 +155,7 @@ sudo systemctl start shadowsocks-libev      # for systemd
 ### Fedora & RHEL
 
 Supported distributions include
-- Fedora 20, 21, rawhide
+- Fedora 22, 23, 24
 - RHEL 6, 7 and derivatives (including CentOS, Scientific Linux)
 
 #### Install from repository
@@ -243,7 +234,10 @@ For Unix-like systems, especially Debian-based systems,
 e.g. Ubuntu, Debian or Linux Mint, you can build the binary like this:
 
 ```bash
-sudo apt-get install build-essential autoconf libtool libssl-dev
+# Debian / Ubuntu
+sudo apt-get install --no-install-recommends build-essential autoconf libtool libssl-dev libpcre3-dev asciidoc xmlto
+# CentOS / Fedora / RHEL
+sudo yum install gcc autoconf libtool automake make zlib-devel openssl-devel asciidoc xmlto
 ./configure && make
 sudo make install
 ```
@@ -272,24 +266,8 @@ service shadowsocks_libev start
 
 ### OpenWRT
 
-**Note**: You may want to use [openwrt-shadowsocks](https://github.com/shadowsocks/openwrt-shadowsocks)
-, which is developed specifically for OpenWRT.
-
-```bash
-# At OpenWRT build root
-pushd package
-git clone https://github.com/shadowsocks/shadowsocks-libev.git
-popd
-
-# Enable shadowsocks-libev in network category
-make menuconfig
-
-# Optional
-make -j
-
-# Build the package
-make V=99 package/shadowsocks-libev/openwrt/compile
-```
+The OpenWRT project is maintained here:
+[openwrt-shadowsocks](https://github.com/shadowsocks/openwrt-shadowsocks).
 
 ### OS X
 For OS X, use [Homebrew](http://brew.sh) to install or build.
@@ -411,6 +389,8 @@ man pages of the applications, respectively.
        [--executable <path>]      path to the executable of ss-server
                                   only available in manager mode
 
+       [--obfs <http|tls>]        Enable obfuscating: HTTP or TLS (Experimental).
+
        [-v]                       verbose mode
 
 notes:
@@ -448,16 +428,39 @@ The latest shadowsocks-libev has provided a *redir* mode. You can configure your
     root@Wrt:~# iptables -t nat -A SHADOWSOCKS -p tcp -j REDIRECT --to-ports 12345
 
     # Add any UDP rules
-    root@Wrt:~# ip rule add fwmark 0x01/0x01 table 100
-    root@Wrt:~# ip route add local 0.0.0.0/0 dev lo table 100
+    root@Wrt:~# ip route add local default dev lo table 100
+    root@Wrt:~# ip rule add fwmark 1 lookup 100
     root@Wrt:~# iptables -t mangle -A SHADOWSOCKS -p udp --dport 53 -j TPROXY --on-port 12345 --tproxy-mark 0x01/0x01
+    root@Wrt:~# iptables -t mangle -A SHADOWSOCKS_MARK -p udp --dport 53 -j MARK --set-mark 1
 
     # Apply the rules
-    root@Wrt:~# iptables -t nat -A PREROUTING -p tcp -j SHADOWSOCKS
+    root@Wrt:~# iptables -t nat -A OUTPUT -p tcp -j SHADOWSOCKS
     root@Wrt:~# iptables -t mangle -A PREROUTING -j SHADOWSOCKS
+    root@Wrt:~# iptables -t mangle -A OUTPUT -j SHADOWSOCKS_MARK
 
     # Start the shadowsocks-redir
     root@Wrt:~# ss-redir -u -c /etc/config/shadowsocks.json -f /var/run/shadowsocks.pid
+
+## Shadowsocks over KCP
+
+It's quite easy to use shadowsocks and [KCP](https://github.com/skywind3000/kcp) together with [kcptun](https://github.com/xtaci/kcptun).
+
+The goal of shadowsocks over KCP is to provide a fully configurable, UDP based protocol to improve poor connections, e.g. a high packet loss 3G network.
+
+### Setup your server
+
+```bash
+server_linux_amd64 -l :21 -t 127.0.0.1:443 --crypt none --mtu 1200 --nocomp --mode normal --dscp 46 &
+ss-server -s 0.0.0.0 -p 443 -k passwd -m chacha20 -u
+```
+
+### Setup your client
+
+```bash
+client_linux_amd64 -l 127.0.0.1:1090 -r <server_ip>:21 --crypt none --mtu 1200 --nocomp --mode normal --dscp 46 &
+ss-local -s 127.0.0.1 -p 1090 -k passwd -m chacha20 -l 1080 -b 0.0.0.0 &
+ss-local -s <server_ip> -p 443 -k passwd -m chacha20 -l 1080 -U -b 0.0.0.0
+```
 
 ## Security Tips
 

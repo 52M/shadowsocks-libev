@@ -2,14 +2,14 @@ dnl                                               -*- Autoconf -*-
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.67])
-AC_INIT([shadowsocks-libev], [2.4.7], [max.c.lv@gmail.com])
+AC_INIT([shadowsocks-libev], [2.6.0], [max.c.lv@gmail.com])
 AC_CONFIG_SRCDIR([src/encrypt.c])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR(auto)
 AC_CONFIG_MACRO_DIR([m4])
 AC_USE_SYSTEM_EXTENSIONS
 
-AM_INIT_AUTOMAKE([subdir-objects foreign -Wall -Werror])
+AM_INIT_AUTOMAKE([subdir-objects foreign -Wno-gnu -Werror])
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AM_MAINTAINER_MODE
@@ -19,6 +19,12 @@ dnl Checks for lib
 AC_DISABLE_STATIC
 AC_DISABLE_SHARED
 LT_INIT([dlopen])
+
+dnl Check for pcre library
+TS_CHECK_PCRE
+if test "x${enable_pcre}" != "xyes"; then
+  AC_MSG_ERROR([Cannot find pcre library. Configure --with-pcre=DIR])
+fi
 
 dnl Checks for using shared libraries from system
 AC_ARG_ENABLE(
@@ -44,6 +50,22 @@ AC_ARG_WITH(
   ],
   [with_crypto_library="openssl"]
 )
+
+AC_ARG_ENABLE([documentation],
+  AS_HELP_STRING([--disable-documentation], [do not build documentation]),
+  [disable_documentation=true],
+  [disable_documentation=false])
+AM_CONDITIONAL([ENABLE_DOCUMENTATION], [test x$disable_documentation = xfalse])
+
+AM_COND_IF([ENABLE_DOCUMENTATION], [
+  AC_PATH_PROG([ASCIIDOC], [asciidoc])
+  test x"${ASCIIDOC}" != x || AC_MSG_ERROR([Cannot find `asciidoc` in PATH.]) 
+  AC_PATH_PROG([XMLTO], [xmlto])
+  test x"$XMLTO" != x || AC_MSG_ERROR([Cannot find `xmlto` in PATH.]) 
+  AC_PATH_PROG([GZIP], [gzip], [gzip])
+  AC_PATH_PROG([MV], [mv], [mv])
+  AC_PROG_SED
+])
 
 dnl Checks for programs.
 AC_PROG_CC
@@ -282,8 +304,11 @@ dnl Add define for libudns to enable IPv6 support
 dnl This is an option defined in the origin configure script
 AC_DEFINE([HAVE_IPv6], [1], [Enable IPv6 support in libudns])
 
-AM_COND_IF([USE_SYSTEM_SHARED_LIB],
-  [],
+AM_COND_IF([USE_SYSTEM_SHARED_LIB],[
+    AC_CHECK_LIB([sodium], [sodium_init], ,[
+       AC_MSG_ERROR([Couldn't find libsodium. Try installing libsodium-dev@<:@el@:>@.])
+    ])
+  ],
   [AC_CONFIG_SUBDIRS([libsodium])])
 
 AC_CONFIG_FILES([ shadowsocks-libev.pc
@@ -291,8 +316,15 @@ AC_CONFIG_FILES([ shadowsocks-libev.pc
                  libcork/Makefile
                  libipset/Makefile
                  src/Makefile])
-AM_COND_IF([USE_SYSTEM_SHARED_LIB],
-  [],
+AM_COND_IF([USE_SYSTEM_SHARED_LIB],[
+    AC_CHECK_LIB([udns], [dns_dnlen], ,[AC_MSG_ERROR([Couldn't find libudns. Try installing libudns-dev or udns-devel.])])
+    AC_CHECK_LIB([ev], [ev_loop_destroy], ,[AC_MSG_ERROR([Couldn't find libev. Try installing libev-dev@<:@el@:>@.])])
+  ],
   [AC_CONFIG_FILES([libudns/Makefile
                  libev/Makefile])])
+
+AM_COND_IF([ENABLE_DOCUMENTATION],
+  [AC_CONFIG_FILES([doc/Makefile])
+])
+
 AC_OUTPUT
